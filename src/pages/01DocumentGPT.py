@@ -1,10 +1,12 @@
+from operator import itemgetter
+from langchain.memory import chat_memory
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_openai import ChatOpenAI
 from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 import streamlit as st
 from utils.streamlit import set_page_config
-from utils.retriever import get_retriever__from_file
+from utils.langchain import get_chat_memory, get_retriever__from_file
 
 
 if "messages" not in st.session_state:
@@ -37,6 +39,7 @@ prompt = ChatPromptTemplate.from_messages(
             Context: {context}
             """,
         ),
+        MessagesPlaceholder(variable_name="history"),
         ("human", "{question}"),
     ]
 )
@@ -77,6 +80,7 @@ file = st.file_uploader("Upload a .txt .pdf or .docx file", type=["pdf", "txt", 
 
 if file:
     retriever = get_retriever__from_file(file)
+    chat_memory = get_chat_memory(file)
 
     send_message("ai", "I am ready to answer your questions!", save=False)
     paint_messages()
@@ -92,12 +96,17 @@ if file:
                 "context": retriever | RunnableLambda(format_docs),
                 "question": RunnablePassthrough(),
             }
+            | RunnablePassthrough.assign(
+                history=RunnableLambda(chat_memory.load_memory_variables)
+                | itemgetter("history")
+            )
             | prompt
             | llm
         )
 
         with st.chat_message("ai"):
             response = chain.invoke(message)
+            chat_memory.save_context({"input": message}, {"output": response.content})
 
 
 else:

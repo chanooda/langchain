@@ -1,8 +1,8 @@
 from langchain.embeddings import CacheBackedEmbeddings
+from langchain.memory import ConversationBufferMemory
 from langchain.storage import LocalFileStore
-from langchain.vectorstores import FAISS
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_text_splitters import CharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
 from langchain_unstructured import UnstructuredLoader
 import streamlit as st
 
@@ -33,3 +33,12 @@ def get_retriever__from_file(file):
         retriever = vector_store.as_retriever()
 
         return retriever
+
+
+@st.cache_resource(show_spinner="...LOADING...")
+def get_chat_memory(file):
+    memory = ConversationBufferMemory(
+        memory_key="history", max_token_limit=300, return_messages=True
+    )
+
+    return memory
