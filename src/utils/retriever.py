@@ -4,8 +4,10 @@ from langchain.vectorstores import FAISS
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import CharacterTextSplitter
 from langchain_unstructured import UnstructuredLoader
+import streamlit as st
 
 
+@st.cache_resource(show_spinner="...LOADING...")
 def get_retriever__from_file(file):
     file_content = file.read()
     file_path = f"./src/app/document/files/{file.name}"
@@ -13,13 +15,6 @@ def get_retriever__from_file(file):
     with open(file_path, "wb") as f:
         f.write(file_content)
 
-        # llm
-        llm = ChatOpenAI(temperature=0.1)
-
-        # document
-        splitter = CharacterTextSplitter.from_tiktoken_encoder(
-            chunk_size=600, chunk_overlap=100, separator="\n"
-        )
         loader = UnstructuredLoader(
             file_path=file_path,
         )
