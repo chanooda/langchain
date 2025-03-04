@@ -1,9 +1,10 @@
 from operator import itemgetter
 from langchain.memory import chat_memory
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from ollama import embeddings
 import streamlit as st
 from utils.streamlit import set_page_config
 from utils.langchain import get_chat_memory, get_retriever__from_file
@@ -79,7 +80,11 @@ st.markdown(
 file = st.file_uploader("Upload a .txt .pdf or .docx file", type=["pdf", "txt", "docx"])
 
 if file:
-    retriever = get_retriever__from_file(file)
+    retriever = get_retriever__from_file(
+        file,
+        embeddings=OpenAIEmbeddings(),
+        path="./src/app/document",
+    )
     chat_memory = get_chat_memory(file)
 
     send_message("ai", "I am ready to answer your questions!", save=False)
