@@ -5,28 +5,16 @@ from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
 from langchain.prompts import ChatPromptTemplate
 import streamlit as st
+from utils.document import ChatCallbackHandler, paint_document_layout
 from utils.streamlit import set_page_config
 from utils.langchain import get_chat_memory, get_retriever__from_file
 
 
+set_page_config("PrivateGPT Home")
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
 model = "mistral:latest"
-
-
-class ChatCallbackHandler(BaseCallbackHandler):
-    message = ""
-
-    def on_llm_start(self, *args, **kwargs):
-        self.message_box = st.empty()
-
-    def on_llm_end(self, response, *args, **kwargs):
-        save_message("ai", self.message)
-
-    def on_llm_new_token(self, token, *args, **kwargs):
-        self.message += token
-        self.message_box.markdown(self.message)
 
 
 llm = ChatOllama(
@@ -46,77 +34,9 @@ prompt = ChatPromptTemplate.from_template(
     """
 )
 
-
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
-
-
-def save_message(role, message):
-    st.session_state["messages"].append({"role": role, "message": message})
-
-
-def send_message(role, message, save=True):
-    with st.chat_message(role):
-        st.markdown(message)
-    if save:
-        save_message(role, message)
-
-
-def paint_messages():
-    for message in st.session_state["messages"]:
-        send_message(message["role"], message["message"], save=False)
-
-
-set_page_config("PrivateGPT Home")
-
-st.markdown(
-    """ 
-    Welcome!
-            
-    Use this chatbot to ask questions about your files!
-"""
+paint_document_layout(
+    llm=llm,
+    embeddings=OllamaEmbeddings(model="nomic-embed-text"),
+    prompt=prompt,
+    path="./src/app/private",
 )
-
-
-file = st.file_uploader(
-    "Upload a .txt .pdf or .docx file",
-    type=["pdf", "txt", "docx"],
-)
-
-if file:
-    retriever = get_retriever__from_file(
-        file,
-        embeddings=OllamaEmbeddings(model="nomic-embed-text"),
-        path="./src/app/private",
-    )
-    chat_memory = get_chat_memory(file)
-
-    send_message("ai", "I am ready to answer your questions!", save=False)
-    paint_messages()
-
-    message = st.chat_input("Ask a question")
-
-    if message:
-        send_message("user", message)
-        docs = retriever.invoke(message)
-
-        chain = (
-            {
-                "context": retriever | RunnableLambda(format_docs),
-                "question": RunnablePassthrough(),
-            }
-            | RunnablePassthrough.assign(
-                history=RunnableLambda(chat_memory.load_memory_variables)
-                | itemgetter("history")
-            )
-            | prompt
-            | llm
-        )
-
-        with st.chat_message("ai"):
-            response = chain.invoke(message)
-            chat_memory.save_context({"input": message}, {"output": response.content})
-
-
-else:
-    st.session_state["messages"] = []
