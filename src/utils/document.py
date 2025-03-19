@@ -1,6 +1,6 @@
 import streamlit as st
 
-from utils.langchain import get_chat_memory, get_retriever__from_file
+from utils.langchain import get_chat_memory, get_retriever_from_file
 from operator import itemgetter
 from langchain.memory import chat_memory
 from langchain_core.callbacks import BaseCallbackHandler
@@ -61,7 +61,7 @@ def paint_document_layout(llm, embeddings, prompt, path):
 
     if file:
 
-        retriever = get_retriever__from_file(
+        retriever = get_retriever_from_file(
             file,
             embeddings=embeddings,
             path=path,

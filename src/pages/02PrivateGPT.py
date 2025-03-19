@@ -7,7 +7,7 @@ from langchain.prompts import ChatPromptTemplate
 import streamlit as st
 from utils.document import ChatCallbackHandler, paint_document_layout
 from utils.streamlit import set_page_config
-from utils.langchain import get_chat_memory, get_retriever__from_file
+from utils.langchain import get_chat_memory, get_retriever_from_file
 
 
 set_page_config("PrivateGPT Home")

@@ -7,36 +7,44 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_unstructured import UnstructuredLoader
 import streamlit as st
 
+from utils.file import save_file
+
 
 @st.cache_resource(
     show_spinner="...LOADING...",
     hash_funcs={OpenAIEmbeddings: lambda _: None, OllamaEmbeddings: lambda _: None},
 )
-def get_retriever__from_file(file, embeddings, path):
-    file_content = file.read()
-    file_path = f"{path}/files/{file.name}"
+def get_retriever_from_file(file, embeddings, path):
+
+    docs = get_docs_from_file(file, path)
+
     cache_path_embeddings = f"{path}/cache/embeddings/{file.name}"
-    with open(file_path, "wb") as f:
-        f.write(file_content)
+    # embedding
+    cache_store = LocalFileStore(cache_path_embeddings)
 
-        loader = UnstructuredLoader(
-            file_path=file_path,
-        )
-        docs = loader.load_and_split()
-        # embedding
-        cache_store = LocalFileStore(cache_path_embeddings)
+    cached_embeddings = CacheBackedEmbeddings.from_bytes_store(embeddings, cache_store)
 
-        cached_embeddings = CacheBackedEmbeddings.from_bytes_store(
-            embeddings, cache_store
-        )
+    # vector store
+    vector_store = FAISS.from_documents(docs, cached_embeddings)
 
-        # vector store
-        vector_store = FAISS.from_documents(docs, cached_embeddings)
+    # retriever
+    retriever = vector_store.as_retriever()
 
-        # retriever
-        retriever = vector_store.as_retriever()
+    return retriever
 
-        return retriever
+
+@st.cache_resource(
+    show_spinner="...LOADING...",
+)
+def get_docs_from_file(file, path):
+    file_path = save_file(file, path)
+
+    loader = UnstructuredLoader(
+        file_path=file_path,
+    )
+    docs = loader.load_and_split()
+
+    return docs
 
 
 @st.cache_resource(show_spinner="...LOADING...")
