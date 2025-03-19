@@ -2,7 +2,6 @@ import streamlit as st
 
 from utils.langchain import get_chat_memory, get_retriever_from_file
 from operator import itemgetter
-from langchain.memory import chat_memory
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
 
@@ -75,7 +74,6 @@ def paint_document_layout(llm, embeddings, prompt, path):
 
         if message:
             send_message("user", message)
-            docs = retriever.invoke(message)
 
             chain = (
                 {
