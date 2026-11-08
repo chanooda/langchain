@@ -1,3 +1,0 @@
-_type: "prompt"
-template: "{country}의 수도는?"
-input_variables: ["country"]
