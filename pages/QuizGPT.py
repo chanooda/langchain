@@ -164,17 +164,25 @@ else:
     def start_quiz():
         st.session_state["generating"] = True
 
+    def retry_quiz():
+        # 라디오 선택값을 지워서 같은 퀴즈를 처음부터 다시 풀게 함
+        for key in list(st.session_state.keys()):
+            if str(key).startswith("question_"):
+                del st.session_state[key]
+
     if st.session_state.get("generating"):
         try:
             with st.spinner("퀴즈 생성중..."):
                 quiz = run_quiz_chain(docs, topic if topic else file.name, option)
+            questions = quiz["questions"]
             with st.form("question_form"):
-                for question in quiz["questions"]:
+                for i, question in enumerate(questions):
                     st.write(question["question"])
                     value = st.radio(
                         "Select an option.",
                         [answer["answer"] for answer in question["answers"]],
                         index=None,
+                        key=f"question_{i}",
                     )
                     if {"answer": value, "correct": True} in question["answers"]:
                         st.success("Correct!")
@@ -183,11 +191,15 @@ else:
                         st.error("Wrong")
 
                 button = st.form_submit_button()
-                if button:
-                    if score == 10:
-                        st.balloons
-                    else:
-                        st.write()
+
+            # st.button은 form 안에 둘 수 없어서 form 밖에서 처리
+            if button:
+                if score == len(questions):
+                    st.balloons()
+                    st.success(f"만점! {score}/{len(questions)}")
+                else:
+                    st.warning(f"{score}/{len(questions)}점이에요.")
+                    st.button("재도전", on_click=retry_quiz)
 
         except (KeyError, TypeError):
             st.error("퀴즈를 만들지 못했어요. 다시 시도해 주세요.")
