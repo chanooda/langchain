@@ -1,12 +1,9 @@
-import json
 from langchain_classic.callbacks import StreamingStdOutCallbackHandler
-from langchain_classic.prompts import FewShotPromptTemplate, PromptTemplate
-from langchain_classic.schema import BaseOutputParser
+from langchain_core.output_parsers.openai_tools import JsonOutputKeyToolsParser
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_openrouter import ChatOpenRouter
-from sqlalchemy import False_
 import streamlit as st
 import os
-import streamlit as st
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_unstructured import UnstructuredLoader
 from langchain_community.retrievers import WikipediaRetriever
@@ -25,26 +22,37 @@ st.title("QuizGPT")
 docs = None
 topic = None
 
-examples = [
-    {"output": """```json
-{{"question": "What is the color of the ocean?", "answers": [{{"answer": "Red", "correct": false}}, {{"answer": "Yellow", "correct": false}}, {{"answer": "Green", "correct": false}}, {{"answer": "Blue", "correct": true}}]}}
-```"""},
-    {"output": """```json
-{{"question": "What is the capital or Georgia?", "answers": [{{"answer": "Baku", "correct": false}}, {{"answer": "Tbilisi", "correct": true}}, {{"answer": "Manila", "correct": false}}, {{"answer": "Beirut", "correct": false}}]}}
-```"""},
-    {"output": """```json
-{{"question": "When was Avatar released?", "answers": [{{"answer": "2007", "correct": false}}, {{"answer": "2001", "correct": false}}, {{"answer": "2009", "correct": true}}, {{"answer": "1998", "correct": false}}]}}
-```"""},
-    {"output": """```json
-{{"question": "Who was Julius Caesar?", "answers": [{{"answer": "A Roman Emperor", "correct": true}}, {{"answer": "Painter", "correct": false}}, {{"answer": "Actor", "correct": false}}, {{"answer": "Model", "correct": false}}]}}
-```"""},
-]
-
-
-class JsonOutputParser(BaseOutputParser):
-    def parse(self, text):
-        text = text.replace("```json", "").replace("```", "").strip()
-        return json.loads(text)
+function = {
+    "name": "create_quiz",
+    "description": "function that takes a list of questions and answers and returns a quiz",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "questions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "answers": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "answer": {"type": "string"},
+                                    "correct": {"type": "boolean"},
+                                },
+                                "required": ["answer", "correct"],
+                            },
+                        },
+                    },
+                    "required": ["question", "answers"],
+                },
+            }
+        },
+        "required": ["questions"],
+    },
+}
 
 
 def format_doc(answers):
@@ -84,7 +92,7 @@ def run_quiz_chain(_docs, topic, option):
         {"context": format_doc, "level": lambda _: option}
         | prompt
         | llm
-        | JsonOutputParser()
+        | JsonOutputKeyToolsParser(key_name="create_quiz", first_tool_only=True)
     )
     quiz = chain.invoke(_docs)
     return quiz
@@ -95,15 +103,17 @@ llm = ChatOpenRouter(
     model="openai/gpt-4o-mini",
     callbacks=[StreamingStdOutCallbackHandler()],
     streaming=True,
+).bind_tools(
+    [function],
+    tool_choice={"type": "function", "function": {"name": "create_quiz"}},
 )
 
 
-example_prompt = PromptTemplate.from_template("{output}")
-
-prompt = FewShotPromptTemplate(
-    examples=examples,
-    example_prompt=example_prompt,
-    prefix="""
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """
     You are a helpful assistant that is role playing as a teacher.
 
     Based ONLY on the following context make 10 questions to test the user's knowledge about the text.
@@ -117,17 +127,10 @@ prompt = FewShotPromptTemplate(
     - Hard: ask about subtle details and require connecting multiple parts of the text. Wrong answers should be very similar to the correct one.
     - Very Hard: ask questions requiring deep inference, analysis, and precise details. Wrong answers should be highly plausible and tricky.
 
-    Each example below shows ONE question as a JSON object. Your output must be a single JSON array containing 10 such objects, inside one ```json code block. Do not output anything other than that code block.
-
-    Question examples:
+    Context: {context}
     """,
-    suffix="""
-            Your turn!
-
-            Level: {level}
-            Context: {context}
-    """,
-    input_variables=["context", "level"],
+        )
+    ]
 )
 
 
@@ -156,6 +159,7 @@ if not docs:
 else:
 
     option = None
+    score = 0
 
     def start_quiz():
         st.session_state["generating"] = True
@@ -165,7 +169,7 @@ else:
             with st.spinner("퀴즈 생성중..."):
                 quiz = run_quiz_chain(docs, topic if topic else file.name, option)
             with st.form("question_form"):
-                for question in quiz:
+                for question in quiz["questions"]:
                     st.write(question["question"])
                     value = st.radio(
                         "Select an option.",
@@ -174,13 +178,19 @@ else:
                     )
                     if {"answer": value, "correct": True} in question["answers"]:
                         st.success("Correct!")
+                        score += 1
                     elif value is not None:
                         st.error("Wrong")
 
                 button = st.form_submit_button()
+                if button:
+                    if score == 10:
+                        st.balloons
+                    else:
+                        st.write()
 
-        except json.JSONDecodeError:
-            st.error("퀴즈를 JSON으로 읽지 못했어요. 다시 시도해 주세요.")
+        except (KeyError, TypeError):
+            st.error("퀴즈를 만들지 못했어요. 다시 시도해 주세요.")
             st.session_state["generating"] = False
 
     else:
