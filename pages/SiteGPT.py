@@ -199,6 +199,8 @@ if "processing" not in st.session_state:
 
 def start_processing():
     st.session_state.processing = True
+    # disabled 값이 바뀌면 위젯이 새로 만들어져 입력값이 사라지므로 미리 저장
+    st.session_state.pending_query = st.session_state.query
 
 
 if retriever:
@@ -221,6 +223,7 @@ if retriever:
     )
 
     if st.session_state.processing:
+        query = st.session_state.get("pending_query", "")
         try:
             if query:
                 with st.spinner("답변을 찾는 중..."):
