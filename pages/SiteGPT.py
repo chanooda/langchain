@@ -4,22 +4,15 @@ from langchain_classic.callbacks import StreamingStdOutCallbackHandler
 from langchain_classic.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from langchain_openrouter import ChatOpenRouter
 import streamlit as st
 from bs4 import BeautifulSoup
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import SitemapLoader
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openrouter import ChatOpenRouter
 
 load_dotenv()
-
-llm = ChatOpenRouter(
-    temperature=0.1,
-    model="openai/gpt-4o-mini",
-    streaming=True,
-    callbacks=[StreamingStdOutCallbackHandler()],
-)
 
 translate_prompt = ChatPromptTemplate.from_template(
     "Translate the following question into English. Output only the translation.\n\n{question}"
@@ -118,8 +111,38 @@ def parse_page(soup: BeautifulSoup):
     return text
 
 
+def get_embeddings(api_key):
+    # chunk_size: 요청당 텍스트 개수 (요청당 300k 토큰 제한 회피)
+    if api_key:
+        return OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            api_key=api_key,
+            chunk_size=200,
+        )
+    # 사이드바에 키가 없으면 .env의 OpenRouter 키로 fallback
+    return OpenAIEmbeddings(
+        model="openai/text-embedding-3-small",
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+        base_url="https://openrouter.ai/api/v1",
+        check_embedding_ctx_length=False,
+        chunk_size=200,
+    )
+
+
+def get_llm(api_key):
+    common = dict(
+        temperature=0.1,
+        streaming=True,
+        callbacks=[StreamingStdOutCallbackHandler()],
+    )
+    if api_key:
+        return ChatOpenAI(api_key=api_key, model="gpt-4o-mini", **common)
+    # 사이드바에 키가 없으면 .env의 OpenRouter 키로 fallback
+    return ChatOpenRouter(model="openai/gpt-4o-mini", **common)
+
+
 @st.cache_resource(show_spinner="Loading website...")
-def load_website(url):
+def load_website(url, api_key):
     splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
         chunk_size=1000, chunk_overlap=200
     )
@@ -132,13 +155,7 @@ def load_website(url):
     docs = loader.load_and_split(text_splitter=splitter)
     vector_store = FAISS.from_documents(
         docs,
-        OpenAIEmbeddings(
-            model="openai/text-embedding-3-small",
-            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-            openai_api_base="https://openrouter.ai/api/v1",
-            check_embedding_ctx_length=False,
-            chunk_size=200,  # 요청당 텍스트 개수 (요청당 300k 토큰 제한 회피)
-        ),
+        get_embeddings(api_key),
     )
     return vector_store.as_retriever()
 
@@ -157,10 +174,24 @@ st.markdown("""
     - Workers AI
     """)
 
+with st.sidebar:
+    api_key = st.text_input("OpenAI API Key", type="password")
+    st.markdown("[GitHub 저장소](https://github.com/chanooda/langchain)")
+
+if not api_key:
+    st.caption("API Key를 입력하지 않으면 기본 LLM(OpenRouter)을 사용합니다.")
+
+# get_answers, choose_answer에서 사용
+llm = get_llm(api_key)
+
 url = "https://developers.cloudflare.com/sitemap-0.xml"
 
 
-retriever = load_website(url)
+try:
+    retriever = load_website(url, api_key)
+except Exception as e:
+    st.error(f"웹사이트를 불러오지 못했습니다. API Key를 확인해주세요.\n\n{e}")
+    st.stop()
 
 if "processing" not in st.session_state:
     st.session_state.processing = False
