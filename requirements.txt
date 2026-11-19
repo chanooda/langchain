@@ -11,3 +11,4 @@ langchain-unstructured==1.0.1
 unstructured==0.18.32
 pypdf==6.21.4
 python-magic==0.4.27
+ddgs==9.16.1
